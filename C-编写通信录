@@ -1,0 +1,130 @@
+#include<stdio.h>
+#include<stdlib.h>
+typedef struct Linklist{
+	char name[10];
+	char num[10];
+	struct Linklist *next;
+}Linklist,*LNode;
+
+void create(Linklist *L)
+{
+	char flag='y';
+	Linklist *p,*s;
+	p=L;
+	puts("create a connectionbook\n");
+	while(flag=='Y'||flag=='y'){
+		s=(LNode)malloc(sizeof(Linklist));
+		printf("input the name\n");
+		scanf("%s",s->name);
+		//fgets(s->name,sizeof(s->name),stdin);
+		printf("input the telephone number\n");
+		scanf("%s",s->num);
+		//fgets(s->num,sizeof(s->num),stdin);
+		s->next=NULL;
+		p->next=s;
+		p=s;
+		getchar();
+		fputs("continue\n",stdout);
+		printf("go on?y/n\n");
+		scanf("%c",&flag);
+	}
+}
+
+void output(Linklist* L)
+{
+	Linklist* p;
+	p=L->next;
+	puts("bianhao\tname\tnum\n");
+	puts("====\t====\t====\n");
+	int count=1;
+	while(p){
+		printf("%d\t%s\t%s\t\n",count,p->name,p->num);
+		p=p->next;
+		count++;
+	}
+}
+
+void update(Linklist* L)
+{
+	Linklist* p;
+	p=L;
+	int n;
+	printf("which one do you want to change\n");
+	scanf("%d\n",&n);
+	int i=0;
+	for(i=1;i<n+1;i++){
+		p=p->next;
+	}
+	if(p==NULL)
+		printf("no this one\n");
+		else{
+			printf("xingming\n");
+			scanf("%s",p->name);
+			fputs("hao ma\n",stdout);
+			scanf("%s",p->num);
+		}
+}
+
+void insert(Linklist *L)
+{
+	Linklist *p,*s;
+	p=L;
+	while(p->next)
+	p=p->next;
+	
+	s=(LNode)malloc(sizeof(Linklist));
+	printf("name\n");
+	scanf("%s",s->name);
+	fputs("haoma\n",stdout);
+	scanf("%s",s->num);
+	s->next=NULL;
+	p->next=s;
+}
+
+void del(Linklist *L)
+{
+	Linklist *p,*q;
+	p=L;
+	int n;
+	puts("which one do you want to delete\n");
+	scanf("%d",&n);
+	int i;
+	for(i=1;i<n;i++){
+		p=p->next;
+	}
+	if(p==NULL)
+		printf("no this \n");
+	else{
+		q=p->next;
+		p->next=q->next;
+		free(q);
+	}
+}
+
+void main()
+{
+	Linklist *L;
+	int i=255;
+	L=(LNode)malloc(sizeof(Linklist));
+	L->next=NULL;
+	create(L);
+	while(i!=0){
+		puts("\n function:\n1.shuchu\t2.xiugai\t3.shanchu\t4.cha ru\t0.tuichu\n");
+		scanf("%d",&i);
+		switch(i){
+			case 1:
+				output(L);
+				break;
+			case 2:
+				update(L);
+				break;
+			case 3:
+				del(L);
+				break;
+			case 4:
+				insert(L);
+				break;
+			}
+		}
+	}
+	

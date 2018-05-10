@@ -238,7 +238,7 @@ void *handle(void *arg)
 		for(j=0;j<BUFFER_SIZE;j++){
 			buf[i*BUFFER_SIZE+j]=buffer[j];
 			if(buffer[j]==13&&buffer[j+1]==10&&buffer[j+2]==13&&buffer[j+3]==10&&j<BUFFER_SIZE-4){
-				flag=1;
+				flag=1;/*  13 和10分别表示转移制表符\r和\n  */
 			}
 		}
 		if(flag)

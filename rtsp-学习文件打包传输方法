@@ -1,0 +1,548 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <memory.h>
+#include <errno.h>
+
+#include <netdb.h>
+#include <time.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h> 
+
+#include"h264.h"
+#define PORT 554
+
+typedef struct{
+	int startcodeprefiex_len;
+	unsigned len;
+	unsigned max_size;
+	int forbidden_bit;
+	int nal_reference_idc;
+	int nal_unit_type;
+	char *buf;
+}NALU_T;
+
+FILE *bits=NULL;
+int FindStartCode2(unsigned char *buf)
+{
+	if((buf[0]==0)&&(buf[1]==0)&&(buf[2]==1))
+		return 0;
+	else
+		return 1;
+}
+
+int FindStartCode3(unsigned char *buf)
+{
+	if((buf[0]==0)&&(buf[1]==0)&&(buf[2]==0)&&(buf[3]==1))
+		return 0;
+	else 
+		return 1;
+}
+
+int info2=0;
+int info3=0;
+RTP_FIXED_HEADER *rtp_hdr;
+
+NALU_HEADER *nalu_hdr;
+
+FU_INDICATOR *fu_ind;
+
+FU_HEADER *fu_hdr;
+
+NALU_T *AllocNALU(int buffersize)
+{
+	NALU_T *n;
+	if((n=(NALU_T*)calloc(1,sizeof(NALU_T)))==NULL){
+		printf("AllocNALU error\n");
+		exit(0);
+	}
+	
+	n->max_size=buffersize;
+	if((n->buf=(char*)calloc(buffersize,sizeof(char)))==NULL){
+		free(n);
+		printf("Alloc n->buf error\n");
+		exit(0);
+	}
+	return n;
+}
+
+void FreeNALU(NALU_T *n)
+{
+	if(n){
+		if(n->buf){
+			free(n->buf);
+		}
+		free(n);
+	}
+}
+
+void OpenBitstreamFile(char *filename)
+{
+	if((bits=fopen(filename,"rb"))==NULL){
+		printf("open file error\n");
+		exit(0);
+	}
+	printf("the h264 file opened sueecssful\n");
+}
+
+//获得一个NALU单元
+int GetAnnexbNALU(NALU_T *n)
+{
+	int pos=0;
+	int startcodefind, rewind;
+	unsigned char *buff;
+	
+	if((buff=(unsigned char*)calloc(n->max_size,sizeof(char)))==NULL)
+		printf(" GetAnnexbNALU calloc buff error\n");
+	n->startcodeprefiex_len=3;
+	if(fread(buff,1,3,bits)!=3){
+		free(buff);
+		return 0;
+	}
+	info2=FindStartCode2(buff);
+	
+	if(info2){
+		if(fread(buff+3,1,1,bits)!=1){
+			free(buff);
+			printf("fread3 error\n");
+			exit(0);
+	}
+}
+	
+	info3=FindStartCode3(buff);
+	
+	if(info2==0){
+		n->startcodeprefiex_len=3;
+		pos=3;
+	}
+	if(info3==0){
+		n->startcodeprefiex_len=4;
+		pos=4;
+	}
+	if(info2&&info3){
+		printf("find startcode error\n");
+		exit(0);
+	}
+	
+	info2=0;
+	info3=0;
+	
+	while(1){
+		if(feof(bits)){
+			n->len=pos-n->startcodeprefiex_len;
+			memcpy(n->buf,&buff[pos],n->len);
+			n->forbidden_bit=n->buf[0]&0x80;
+			n->nal_reference_idc=n->buf[0]&0x60;
+			n->nal_unit_type=n->buf[0]&0x1f;
+			
+			free(buff);
+			return pos;
+		}
+		
+		buff[pos++]=fgetc(bits);
+		
+		if(n->startcodeprefiex_len==3){
+			info2=FindStartCode2(&buff[pos-3]);
+			if(info2==0)
+				break;
+		}
+	  else if(n->startcodeprefiex_len==4){
+	  	info3=FindStartCode3(&buff[pos-4]);
+	  	if(info3==0)
+	  		break;
+	  }
+  }
+  n->len=pos-1-n->startcodeprefiex_len-n->startcodeprefiex_len;
+  memcpy(n->buf,&buff[n->startcodeprefiex_len],n->len);
+  n->forbidden_bit=n->buf[0]&0x80;
+	n->nal_reference_idc=n->buf[0]&0x60;
+	n->nal_unit_type=n->buf[0]&0x1f;
+	
+	fseek(bits,-(n->startcodeprefiex_len),SEEK_CUR);
+	free(buff);
+	return (pos-1-n->startcodeprefiex_len);
+}
+
+void dump(NALU_T *n)
+{
+	if(!n) return ;
+	printf("len:%d\n",n->len);
+	printf("nal_unit_type:%x\n",n->nal_unit_type);
+}
+//文件RTP打包并发送
+int rtp_send_file(int sockfd,char *filename)
+{
+	printf("into the rtp_send_file\n");
+	int rtp_number;
+	OpenBitstreamFile(filename);
+	NALU_T *n;
+	char *nalu_payload;
+	char sendbuf[1500];
+	unsigned short seq_num=0;
+	int bytes=0;
+	float framerate=15;
+	unsigned int timestamp_increase=0,ts_current=0;
+	timestamp_increase=(unsigned int)(90000.0/framerate);
+	sleep(3);
+	n=AllocNALU(80000000);
+	sleep(3);
+	printf("before the getannexbnalu\n");
+	while(!feof(bits)){
+		GetAnnexbNALU(n);
+		
+		memset(sendbuf,0,1500);
+		
+		rtp_hdr=(RTP_FIXED_HEADER*)&sendbuf[0];
+		rtp_hdr->payload=H264;
+		rtp_hdr->version=2;
+		rtp_hdr->marker=0;
+		rtp_hdr->ssrc=htonl(10);
+		
+		if(n->len<=1400){
+			rtp_hdr->marker=1;
+			rtp_hdr->seq_no=htons(seq_num++);
+			
+			nalu_hdr=(NALU_HEADER*)&sendbuf[12];
+			nalu_hdr->F=n->forbidden_bit;
+			nalu_hdr->NRI=n->nal_reference_idc>>5;
+			nalu_hdr->TYPE=n->nal_unit_type;
+			
+			nalu_payload=&sendbuf[13];
+			memcpy(nalu_payload,n->buf+1,n->len-1);
+			ts_current=ts_current+timestamp_increase;
+			rtp_hdr->timestamp=htonl(ts_current);
+			bytes=n->len+12;
+			rtp_number=send(sockfd,sendbuf,bytes,0);
+			if(rtp_number==-1)
+				printf("len<1400 rtp send erro\n");
+			else
+				printf("len<1400 rtp_num=%d number=%d\n",seq_num,rtp_number);
+		}
+		else if(n->len>1400){
+			int k=0,l=0;
+			k=n->len/1400;
+			l=n->len%1400;
+			int t=0;
+			ts_current=ts_current+timestamp_increase;
+			rtp_hdr->timestamp=htonl(ts_current);
+			
+			while(t<=k){
+				rtp_hdr->seq_no=htons(seq_num++);
+				
+				if(!t){
+					rtp_hdr->marker=0;
+					
+					fu_ind=(FU_INDICATOR*)&sendbuf[12];
+					fu_ind->F=n->forbidden_bit;
+					fu_ind->NRI=n->nal_reference_idc>>5;
+					fu_ind->TYPE=28;
+					
+					fu_hdr=(FU_HEADER*)&sendbuf[13];
+					fu_hdr->E=0;
+					fu_hdr->R=0;
+					fu_hdr->S=1;
+					fu_hdr->TYPE=n->nal_unit_type;
+					
+					nalu_payload=&sendbuf[14];
+					memcpy(nalu_payload,n->buf+1,1400);
+					bytes=1400+14;
+					rtp_number=send(sockfd,sendbuf,bytes,0);
+					if(rtp_number==-1)
+						printf("t=0 send rtp error\n");
+					else
+						printf("!=t rtp_num=%d rtp_nmuber=%d\n",seq_num,rtp_number);
+					t++;
+				}
+				else if(k==t){
+					rtp_hdr->marker=1;
+					fu_ind=(FU_INDICATOR*)&sendbuf[12];
+					fu_ind->F=n->forbidden_bit;
+					fu_ind->NRI=n->nal_reference_idc>>5;
+					fu_ind->TYPE=28;
+					
+					fu_hdr=(FU_HEADER*)&sendbuf[13];
+					fu_hdr->E=1;
+					fu_hdr->R=0;
+					fu_hdr->S=0;
+					fu_hdr->TYPE=n->nal_unit_type;
+					
+					nalu_payload=&sendbuf[14];
+					memcpy(nalu_payload,n->buf+t*1400+1,l-1);
+					bytes=l-1+14;
+					
+					rtp_number=send(sockfd,sendbuf,bytes,0);
+					if(rtp_number==-1)
+						printf("t=0 send rtp error\n");
+					else
+						printf("t==k rtp_num=%d rtp_nmuber=%d\n",seq_num,rtp_number);
+						t++;
+				}
+				else if(t<k&&t!=0){
+					rtp_hdr->marker=0;
+					fu_ind=(FU_INDICATOR*)&sendbuf[12];
+					fu_ind->F=n->forbidden_bit;
+					fu_ind->NRI=n->nal_reference_idc>>5;
+					fu_ind->TYPE=28;
+					
+					fu_hdr=(FU_HEADER*)&sendbuf[13];
+					fu_hdr->E=0;
+					fu_hdr->R=0;
+					fu_hdr->S=0;
+					fu_hdr->TYPE=n->nal_unit_type;
+					
+					nalu_payload=&sendbuf[14];
+					memcpy(nalu_payload,n->buf+t*1400+1,1400);
+					bytes=1400+14;
+					
+					rtp_number=send(sockfd,sendbuf,bytes,0);
+					if(rtp_number==-1)
+						printf("t=0 send rtp error\n");
+					else
+						printf("t<k&&t!=0,rtp_num=%d rtp_nmuber=%d\n",seq_num,rtp_number);
+						t++;
+				}
+			}
+		}
+	}
+	FreeNALU(n);
+	return 0;
+}
+
+char *allowedCommandNames="OPTIONS, DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE";
+void handleCmd_OPTIONS(char *fResponseBuffer)
+{
+	bzero(fResponseBuffer,sizeof (fResponseBuffer));
+	snprintf((char *)fResponseBuffer,256,
+	"RTSP/1.0 200 OK\r\n"
+	"CSeq: 2\r\n"
+	 "Public: %s\r\n\r\n",
+	 allowedCommandNames);
+}
+void handleCmd_DESCRIBE(char *fResponseBuffer)
+{
+    bzero(fResponseBuffer,sizeof (fResponseBuffer));
+    snprintf((char*)fResponseBuffer, 1000,
+	     "RTSP/1.0 200 OK\r\n"
+	     "CSeq: 3\r\n"
+	     "Content-Base: 192.168.0.240\r\n"
+	     "Content-Type: application/sdp\r\n"
+	     "Content-Length: 2000\r\n"
+	    "\r\n"
+	     "v=0\r\n"
+	     "o=- 0 0 IN IP4 0.0.0.0\r\n"
+	     "s=h264\r\n"
+	     "t=0 0\r\n"
+	     "a=control:rtsp://192.168.0.240:8888\r\n"
+	     "a=range:npt=0-\r\n"
+	     "m=video 0 RTP/AVP 96\r\n"
+	     "c=IN IP4 0.0.0.0\r\n"
+	     "a=rtpmap:96 H264/90000\r\n"
+	     "a=fmtp:96 packetization-mode=1;sprop-parameter-sets=Z0IAFJWOUH5A,aM48gA==\r\n"
+	     "a=control:rtsp://192.168.0.240:8888/track1\r\n"
+	     "m=audio 0 RTP/AVP 97\r\n"
+	     "c=IN IP4 0.0.0.0\r\n"
+	     "a=rtpmap:97 PCMA/8000/1\r\n"
+	     "a=control:rtsp://192.168.0.240/track2\r\n"
+	     
+	     );
+}
+void handleCmd_SETUP(char *fResponseBuffer)
+{
+    bzero(fResponseBuffer,sizeof (fResponseBuffer));
+    snprintf((char*)fResponseBuffer,256,
+                "RTSP/1.0 200 OK\r\n"
+                 "CSeq: 0\r\n"
+                 "Transport: RTP/AVP;unicast;interleaved=0-1\r\n"
+                 "Session: 1\r\n\r\n");
+}
+ void handleCmd_PLAY(char *fResponseBuffer)
+ {
+    bzero(fResponseBuffer,sizeof (fResponseBuffer));
+    snprintf((char*)fResponseBuffer,256,
+                "RTSP/1.0 200 OK\r\n"
+                "CSeq: 1\r\n"
+                "Range: npt=0.000-\r\n"
+                "User-Agent: yuanzhenhai\r\n\r\n");
+ }
+
+void handleCmd_bad(char *fResponseBuffer)
+{
+  bzero(fResponseBuffer,sizeof (fResponseBuffer));
+  snprintf((char*)fResponseBuffer, 256,
+	   "error");
+}
+	
+void rtsp_yuan(int sockfd,char *fResponseBuffer,char *filename,char *cmdName)
+{
+	int send_number;
+	if(memcmp(cmdName,"OPTIONS",sizeof("OPTIONS")-1)==0)
+    {
+        printf("option!\n");
+        handleCmd_OPTIONS(fResponseBuffer);
+        send_number=send(sockfd,fResponseBuffer,strlen(fResponseBuffer),0);
+        if(send_number==-1)
+        	printf("options send error\n");
+        else{
+        	printf("fResponseBuffer:%s\n",fResponseBuffer);
+          printf("option sendto number = %d\n",send_number);
+          printf("option sendto successful!\n");
+        }
+    }
+    else if(memcmp(cmdName,"DESCRIBE",sizeof("DESCRIBE")-1)==0){
+    
+        printf("describe!\n");
+        handleCmd_DESCRIBE(fResponseBuffer);
+        send_number = send(sockfd,fResponseBuffer,strlen(fResponseBuffer),0);
+        if(-1 == send_number)
+        {
+            perror("describe sendto error");
+        }
+        else
+        {
+            printf("fResponseBuffer:%s\n",fResponseBuffer);
+            printf("describe sendto number = %d\n",send_number);
+            printf("descrebe sendto successful!\n");
+        }
+    }
+    
+     else if(memcmp(cmdName,"SETUP",sizeof("SETUP")-1)==0){
+    
+        printf("setup!\n");
+        handleCmd_SETUP(fResponseBuffer);
+        send_number = send(sockfd,fResponseBuffer,strlen(fResponseBuffer),0);
+        if(send_number == -1)
+        {
+            perror("setup sendto error");
+        }
+        else
+        {
+            printf("fResponseBuffer:%s\n",fResponseBuffer);
+            printf("setup sendto number = %d\n",send_number);
+            printf("setup sendto successful!\n");
+        }
+
+     }
+     else if(memcmp(cmdName,"PLAY",sizeof("PLAY")-1)==0){
+    
+        printf("play!\n");
+        handleCmd_PLAY(fResponseBuffer);
+        send_number = send(sockfd,fResponseBuffer,strlen(fResponseBuffer),0);
+        if(-1 == send_number)
+        {
+            perror("play sendto error");
+        }
+        else
+        {
+            int rtp_flag = rtp_send_file(sockfd,filename);
+            printf("rtp_flag = %d",rtp_flag);
+            printf("fResponseBuffer:%s\n",fResponseBuffer);
+            printf("play sendto number = %d\n",send_number);
+            printf("play sendto successful!\n");
+        }
+
+     }	
+     		
+		else
+    {
+        printf("bad request!\n");
+        handleCmd_bad(fResponseBuffer);
+        send_number = send(sockfd,fResponseBuffer,strlen(fResponseBuffer),0);
+        if(-1 == send_number)
+        {
+            perror("bad reqest sendto error");
+        }
+        else
+        {
+            printf("fResponseBuffer:%s\n",fResponseBuffer);
+            printf("bad request sendto number = %d\n",send_number);
+            printf("bad reqrest successful!\n");
+        }
+
+    } 
+    printf("rtsp_yuan successful\n");
+    	
+  }	
+  
+char *get_cmd_name(char *request)
+{
+  char *temp_str=(char*)malloc(32);
+  sscanf(request,"%[^ ]",temp_str);
+  return temp_str;
+}
+
+int main(int argc,char **argv)
+{
+	char *cmd;
+	char message[2048];
+	char frambuffer[5000];
+	int sockfd,con;
+	struct sockaddr_in server,client;
+	int len=sizeof(client);
+	
+	sockfd=socket(AF_INET,SOCK_STREAM,0);
+	
+	bzero(&server,sizeof(server));
+	server.sin_family=AF_INET;
+	server.sin_port=htons(PORT);
+	server.sin_addr.s_addr=htonl(INADDR_ANY);
+	
+	bind(sockfd,(struct sockaddr*)&server,sizeof(server));
+	
+	listen(sockfd,20);
+	printf("waiting for the accept\n");
+	pid_t pid;	
+	
+	
+	printf("accept successful\n");
+	
+	while(1){
+		con=accept(sockfd,(struct sockaddr*)&client,&len);
+		if((pid=fork())==0){
+			close(sockfd);
+		while(1){
+		memset(message,0,sizeof(message));
+		recv(con,message,sizeof(message),0);
+		printf("i recieve=%s\n",message);
+		cmd=get_cmd_name(message);
+		printf("the cmd=%s\n",cmd);
+		rtsp_yuan(con,frambuffer,argv[1],cmd);
+		
+	}
+	
+}
+close(con);
+
+}
+}
+		
+		
+	
+	
+	
+	  
+  	
+  	
+					
+				
+					
+					
+					
+			
+  	
+  
+	  
+				
+				
+		
+	
+	
+		
+	
+	
+	
+
+	
+	

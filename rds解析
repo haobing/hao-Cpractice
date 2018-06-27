@@ -1,0 +1,539 @@
+#include<stdio.h>
+#include<stdlib.h>
+
+//RDS数据包类型和长度
+struct TypeAndLong{
+    unsigned  int Type;
+    unsigned  int Long;
+};
+//资源编码数量
+//unsigned char RscEcodNum;
+
+//资源编码和保留位
+struct RscEcod{
+    unsigned int KeepBit;
+    unsigned char RscEcodStr[25];
+};
+//数据包时刻
+//unsigned char RsdTime[5];
+//数字证书编号
+//unsigned char RsdCertNum[7];
+//数字签名
+//unsigned char DataSign[66];
+
+//类型00 设置扫描频点列表信息
+struct FreFeature{
+    unsigned char   OderNum;
+    unsigned char ProNum;
+    float Frequency;
+};
+struct ScanSet{
+    unsigned char Num;
+    struct FreFeature *Fre;
+};
+
+//类型01 设置设备资源编码
+struct DevSrcEcod{
+    unsigned char PhyAddrLong;
+    unsigned char *DevPhyAddr;
+    struct RscEcod rsceco;
+};
+//类型02 设置采用/禁用维持指令
+struct OrderSet{
+    char StarOrStop;
+    short int KeepTime;
+};
+
+//类型03 系统时间校对指令
+struct SysTime{
+    unsigned short int year;
+    unsigned char month;
+    unsigned char day;
+    unsigned char hour;
+    unsigned char minutes;
+    unsigned char seconds;
+};
+
+//类型04 设置回传参数
+struct SetBackPar{
+    unsigned char BackWay;
+    unsigned char BackAddrLong;
+    unsigned char *BackAddr;
+};
+
+//类型05 设置回传周期
+// unsigned int BackPeriod;
+
+//类型06 数字证书列表更新指令
+//unsigned char *DataCertList;
+
+//类型07 证书更新指令
+//unsigned char *CertUpdate;
+
+//类型08 状态/参数查询指令
+struct StatInqur{
+    unsigned char StatNum;
+    unsigned char *ParaIdent;
+};
+
+//类型09 -10 预留为其它配置使用
+
+//类型11 应急开播/停播指令
+struct EmergStarOrder{
+    unsigned char StarType;
+    unsigned char FreqSwitch;
+    unsigned char EventLevel;
+    unsigned long long EventType;
+    unsigned char EmergKeep;
+    unsigned char EmergMesID[36];
+    float FreqMes;
+};
+
+//类型12设备复位指令
+struct ResetOrder{
+    unsigned char TypeOrder;
+    unsigned char DefaChange;
+    unsigned char ResetKeep;
+    float DefaultFreqMes;
+};
+
+//类型13 恢复出厂设置指令
+struct ResumFac{
+    unsigned char ResuOrderType;
+    unsigned char ResuKeep;
+};
+
+//类型14 应急演练指令
+struct Drill{
+    unsigned char DrillType;
+    unsigned char DrillOpera;
+    unsigned char DrillKeep;
+    unsigned char DrillID[36];
+};
+
+//类型15 文本内容传输指令
+struct TextCont{
+    unsigned char TextType;
+    unsigned char TextEcod;
+    unsigned char TextKeep;
+    unsigned char TextEmergID[36];
+    unsigned char TextLong;
+    unsigned char *Textdata;
+};
+
+//类型16-20预留为其它应急广播所用
+
+//类型21 维持指令
+struct KeepOrder{
+    unsigned char KeepNum;
+    unsigned char KeepKeep;
+};
+
+//类型22 日常开播/停播指令格式
+struct DayStar{
+    unsigned char DayStarType;
+    unsigned char DayFreqSwitch;
+    unsigned char DayOrderID[36];
+    float FreqSwitchMes;
+    unsigned char StarVolume;
+};
+
+//类型23 日常广播默认音量设置指令
+struct DayDefauVolum{
+    unsigned char VolumSet;
+    unsigned char VolumKeep;
+};
+
+//类型24 终端功放开关指令
+//unsigned char PwAmpSwi;
+
+//总的数据包结构
+union RdsCont{
+	struct ScanSet TypeZero;
+	struct DevSrcEcod TypeOne;
+	struct OrderSet TypeTwo;
+	struct SysTime TypeThree;
+	struct SetBackPar TypeFour;
+	unsigned int BackPeriod;
+	unsigned char *DataCertList;
+	unsigned char *CertUpdate;
+	struct StatInqur TypeEight;
+	struct EmergStarOrder TypeElev;
+	struct ResetOrder TypeTwel;
+	struct ResumFac TypeThirt;
+	struct Drill TypeFourt;
+	struct TextCont TypeFift;
+	struct KeepOrder TypeTwtyOne;
+	struct DayStar TypeTwtyTwo;
+	struct DayDefauVolum TypeTwtyThree;
+	unsigned char PwAmpSwi;
+};
+
+//Rds协议总结构体
+struct RdsProtol{
+	struct TypeAndLong TypeLong;
+	unsigned char RscEcodNum;
+	struct RscEcod *RscEco;
+	union RdsCont *Content;
+	unsigned char RsdTime[6];
+	unsigned char RsdCertNum[7];
+	unsigned char DataSign[66];
+};
+
+//
+
+struct RdsProtol Rds;
+//读取三个字节
+char string1[3];
+//第一步，确定数据包类型和长度
+struct TypeAndLong GetRdsType(char *string)
+{
+    struct TypeAndLong typelong;
+    if(string==NULL){
+        printf("the string is NULL")
+        exit(1);
+    }
+    typelong.Type=string[0]&0x1f;
+    typelong.Long=((unsigned int)string[1]<<3)+((unsigned int)string.[0]>>5);
+    return typelong;
+}
+
+//第二步，确定资源编码数量
+unsigned char GetRscEcodNum(char *string)
+{
+    unsigned  char num;
+    if(string==NULL){
+        printf("the string is NULL\n");
+        exit(1);
+    }
+    num=string[2];
+    return num;
+}
+struct TypeAndLong typelong=GetRdsType(string1);
+unsigned char EcodNum=GetRscEcodNum(string1);
+Rds.TypeLong.Type=typelong.Type;
+Rds.TypeLong.Long=typelong.Long;
+Rds.RscEcodNum=EcodNum;
+
+
+
+//第三步确定资源编码内容
+//读取剩下的字节string2[typelong.Long-1]
+//1,确定一个资源编码内容
+void GetOneRscEco(char *RsdString,struct RscEcod *RscEcoCon)
+{   char *string=RsdString;
+    RscEcoCon->KeepBit=string[0]&0xf;
+    RscEcoCon->RscEcodStr[0]=(string[0]>>4)&0xf;
+   for(int i=1;i<=22;i++){
+       if((i%2)==1)
+       RscEcoCon->RscEcodStr[i]=string[(i/2)+1]&0xf;
+       else if((i%2)==0)
+       RscEcoCon->RscEcodStr[i]=(string[(i/2)]>>4)&0xf;   
+   }
+}
+//2,确定N个资源编码内容
+void GetRscEcodCon(char *RsdString,struct RscEcod *RscEcoCon)
+{
+    char *string=RsdString;
+    for(int i=0;i<Rds.RscEcodNum;i++){
+        GetOneRscEco(string,RscEcoCon);
+        string+=12;
+        RscEcoCon++;
+    }
+}
+Rds.RscEco=(struct RscEcod*)malloc(Rds.RscEcodNum*12);
+char *RscEcod=string2;
+GetRscEcodCon(RscEcod,Rds.RscEco);
+//第四步确定数据包内容
+//1,计算数据包内容长度
+unsigned int N=Rds.TypeLong.Long-1-12*Rds.RscEcodNum-74;
+//2，解析数据包填充内容
+float GetFreq(char *string)
+{
+    float bcd[6],num;
+    bcd[0]=string[0]&0xf;
+    bcd[1]=(string[0]>>4)&0xf;
+    bcd[2]=string[1]&0xf;
+    bcd[3]=(string[1]>>4)&0xf;
+    bcd[4]=string[2]&0xf;
+    bcd[5]=(string[2]>>4)&0xf;
+    num=bcd[3]*1000+bcd[2]*100+bcd[1]*10+bcd[0]+bcd[5]*0.1+bcd[4]*0.01;
+    return num;   
+}
+
+void  GetScanSet(unsigned char *string,union RdsCont *Content)
+{   Content->TypeZero.Num=string[0];
+    Content->TypeZero.Fre=(struct FreFeature *)malloc(string[0]);
+    
+    int i=1,j=0;
+    float bcd[6],Num;
+    for(i=1;i<=string[0];i++){
+        Content->TypeZero.Fre[i-1].OderNum=string[j+1];
+        Content->TypeZero.Fre[i-1].ProNum=string[j+2];
+        Content->TypeZero.Fre[i-1].Frequency=GetFreq(&string[j+3]);
+        j+=5;
+    }
+
+}
+
+void GetSrcEcod(unsigned char *string,union RdsCont *Content)
+{
+    Content->TypeOne.DevPhyAddr=(unsigned char*)malloc(N-13+1);
+    Content->TypeOne.PhyAddrLong=string[0];
+    memcpy(Content->TypeOne.DevPhyAddr,&string[1],N-13);
+    unsigned char *string1=&string[N-13+1];
+    GetOneRscEco(string1,&(Content->TypeOne.rsceco));
+}
+
+void GetOrderSet(unsigned char *string,union RdsCont *Content)
+{
+    Content->TypeTwo.StarOrStop=string[0];
+    Content->TypeTwo.KeepTime=((unsigned short int)string[2]<<8)+((unsigned short int)string[1]);
+}
+
+void GetSysTime(unsigned char *string,union RdsCont *Content)
+{
+    Content->TypeThree.year=((unsigned short int)string[1]<<8)+((unsigned short int)string[0]);
+    Content->TypeThree.month=string[2];
+    Content->TypeThree.day=string[3];
+    Content->TypeThree.hour=string[4];
+    Content->TypeThree.minutes=string[5];
+    Content->TypeThree.seconds=string[6];
+}
+
+void GetSetBackPar(unsigned char *string,union RdsCont *Content)
+{
+    Content->TypeFour.BackWay=string[0];
+    Content->TypeFour.BackAddrLong=string[1];
+    Content->TypeFour.BackAddr=(unsigned char *)malloc(N-1);
+    memcpy(Content->TypeFour.BackAddr,&string[2],N-2);
+}
+
+void GetBackPeriod(unsigned char *string,union RdsCont *Content)
+{
+    Content->BackPeriod=((unsigned int)string[0])+((unsigned int)string[1]<<8)+((unsigned int)string[2]<<16)+((unsigned int)string[3]<<24);
+}
+
+void GetDataCertList(unsigned char *string,union RdsCont *Content)
+{
+    Content->DataCertList=(unsigned char *)malloc(N+1);
+    memcpy(Content->DataCertList,string,N);
+}
+
+void GetCertUpdate(unsigned char *string,union RdsCont *Content)
+{
+    Content->CertUpdate=(unsigned char *)malloc(N+1);
+    memcpy(Content->CertUpdate,string,N);
+}
+
+void GetStatInqur(unsigned char *string,union RdsCont *Content)
+{
+    Content->TypeEight.StatNum=string[0];
+    Content->TypeEight.ParaIdent=(unsigned char *)malloc(N);
+    memcpy(Content->TypeEight.ParaIdent,&string[1],N-1);
+}
+
+void GetEmergStarOrder(unsigned char *string,union RdsCont *Content)
+{
+    int i=0;
+    Content->TypeElev.StarType=string[0]&0x3;
+    Content->TypeElev.FreqSwitch=(string[0]>>2)&0x3;
+    Content->TypeElev.EventLevel=(string[0]>>4)&0xf;
+    Content->TypeElev.EventType=((unsigned long long)string[1])+((unsigned long long)string[2]<<8)+((unsigned long long)string[3]<<16)+((unsigned long long)string[4]<<24)+((unsigned long long)string[5]<<32);
+    Content->TypeElev.EmergKeep=string[6]&0xf;
+    Content->TypeElev.EmergMesID[0]=string[6]>>4;
+    for(i=1;i<35;i++)
+    {
+        if(i%2==1)
+        Content->TypeElev.EmergMesID[i]=string[(i/2)+7]&0xf;
+        else if(i%2==0)
+        Content->TypeElev.EmergMesID[i]=(string[(i/2)+6]>>4)&0xf;
+    }
+    Content->TypeElev.FreqMes=GetFreq(&string[24]);
+}
+
+void GetResetOrder(unsigned char *string,union RdsCont *Content) 
+{
+    Content->TypeTwel.TypeOrder=string[0]&0x3;
+    Content->TypeTwel.DefaChange=(string[0]>>2)&0x3;
+    Content->TypeTwel.ResetKeep=(string[0]>>4)&0xf;
+    Content->TypeTwel.DefaultFreqMes=GetFreq(&string[1]);
+}
+
+void GetResumFac(unsigned char *string,union RdsCont *Content) 
+{
+    Content->TypeThirt.ResuOrderType=string[0]&0x3;
+    Content->TypeThirt.ResuKeep=string[0]>>2;
+}
+
+void GetDrill(unsigned char *string,union RdsCont *Content) 
+{
+    int i;
+    Content->TypeFourt.DrillType=string[0]&0xf;
+    Content->TypeFourt.DrillOpera=(string[0]>>4)&0xf;
+    Content->TypeFourt.DrillKeep=string[1]&0xf;
+    Content->TypeFourt.DrillID[0]=(string[1]>>4)&0xf;
+    for(i=1;i<35;i++){
+        if(i%2==1)
+        Content->TypeFourt.DrillID[i]=string[i/2+2]&0xf;
+        else if(i%2==0)
+        Content->TypeFourt.DrillID[i]=(string[i/2+1]>>4)&0xf;
+    }
+}
+
+void GetTextCont(unsigned char *string,union RdsCont *Content) 
+{
+    int i;
+    Content->TypeFift.TextType=string[0]&0xf;
+    Content->TypeFift.TextEcod=(string[0]>>4)&0xf;
+    Content->TypeFift.TextKeep=string[1]&0xf;
+    for(i=0;i<35;i++){
+        if(i%2==1)
+        Content->TypeFift.TextEmergID[i]=string[i/2+2]&0xf;
+        else if(i%2==0)
+        Content->TypeFift.TextEmergID[i]=(string[i/2+1]>>4)&0xf;
+    }
+    Content->TypeFift.TextLong=string[19];
+    Content->TypeFift.Textdata=(unsigned char*)malloc(N-19);
+    memcpy(Content->TypeFift.Textdata,&string[20],N-20);
+}
+
+void GetKeepOrder(unsigned char *string,union RdsCont *Content)
+{
+    Content->TypeTwtyOne.KeepNum=string[0];
+    Content->TypeTwtyOne.KeepKeep=string[1];
+}
+
+void GetDayStar(unsigned char *string,union RdsCont *Content)
+{
+    int i;
+    Content->TypeTwtyTwo.DayStarType=string[0]&0x3;
+    Content->TypeTwtyTwo.DayFreqSwitch=(string[0]>>2)&0x3;
+    for(i=0;i<35;i++){
+        if(i%2==1)
+        Content->TypeTwtyTwo.DayOrderID[i]=string[i/2+1]&0xf;
+        else if(i%2==0)
+        Content->TypeTwtyTwo.DayOrderID[i]=(string[i/2]>>4)&0xf;
+    }
+    Content->TypeTwtyTwo.FreqSwitchMes=GetFreq(&string[18]);
+    Content->TypeTwtyTwo.StarVolume=string[21];
+}
+
+void GetDayDefauVolum(unsigned char *string,union RdsCont *Content)
+{
+    Content->TypeTwtyThree.VolumSet=string[0];
+    Content->TypeTwtyThree.VolumKeep=string[1];
+
+}
+
+void GetPwAmpSwi(unsigned char *string,union RdsCont *Content)
+{
+    Content->PwAmpSwi=string[0];
+}
+
+union RdsCont *GetRdsCont(unsigned char *string)
+{
+    union RdsCont Content;
+    unsigned char type;
+    type=Rds.TypeLong.Type;
+    unsigned char *strCont=&string[Rds.RscEcodNum*12-1];
+    
+    switch(type){
+        case 0:
+        GetScanSet(strCont,&Content);break;
+        case 1:
+        GetSrcEcod(strCont,&Content);break;
+        case 2:
+        GetOrderSet(strCont,&Content);break;
+        case 3:
+        GetSysTime(strCont,&Content);break;
+        case 4:
+        GetSetBackPar(strCont,&Content);break;
+        case 5:
+        GetBackPeriod(strCont,&Content);break;
+        case 6:
+        GetDataCertList(strCont,&Content);break;
+        case 7:
+        GetCertUpdate(strCont,&Content);break;
+        case 8:
+        GetStatInqur(strCont,&Content);break;
+        case 9:
+        printf("the TYPE=9 is Keep for Other Set");break;
+        case 10:
+        printf("the TYPE=10 is Keep for Other Set");break;
+        case 11:
+        GetEmergStarOrder(strCont,&Content);break;
+        case 12:
+        GetResetOrder(strCont,&Content);break;
+        case 13:
+        GetResumFac(strCont,&Content);break;
+        case 14:
+        GetDrill(strCont,&Content);break;
+        case 15:
+        GetTextCont(strCont,&Content);break;
+        case 16:
+        printf("the TYPE=16 is Keep for Other EmergOrder");break;
+        case 17:
+        printf("the TYPE=17 is Keep for Other EmergOrder");break;
+        case 18:
+        printf("the TYPE=18 is Keep for Other EmergOrder");break;
+        case 19:
+        printf("the TYPE=19 is Keep for Other EmergOrder");break;
+        case 20:
+        printf("the TYPE=20 is Keep for Other EmergOrder");break;
+        case 21:
+        GetKeepOrder(strCont,&Content);break;
+        case 22:
+        GetDayStar(strCont,&Content);break;
+        case 23:
+        GetDayDefauVolum(strCont,&Content);break;
+        case 24:
+        GetPwAmpSwi(strCont,&Content);break;
+        case 25:
+        printf("the TYPE=25 is Keep for Other DailyOrder");break;
+        case 26:
+        printf("the TYPE=26 is Keep for Other DailyOrder");break;
+        case 27:
+        printf("the TYPE=27 is Keep for Other DailyOrder");break;
+        case 28:
+        printf("the TYPE=28 is Keep for Other DailyOrder");break;
+        case 29:
+        printf("the TYPE=29 is Keep for Other DailyOrder");break;
+        case 30:
+        printf("the TYPE=30 is Keep for Other DailyOrder");break;
+        case 31:
+        printf("the TYPE=31 is Keep for Other DailyOrder");break;
+    }
+}
+
+//第5步 获取数据包时刻
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

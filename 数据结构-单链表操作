@@ -1,0 +1,89 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+
+typedef struct list{
+	char name[20];
+	int num;
+	struct list *next;
+}Lnode;
+typedef struct list *Linklist;
+Linklist creat_list(Linklist head,int n)
+{
+	Linklist p=head;
+	Linklist q;
+	while(n--){
+		q=(Linklist)malloc(sizeof(Lnode));
+		head->next=q;
+		sprintf(q->name,"wo shi %d\n",n);
+		q->num=n;
+		q->next=NULL;
+		head=q;
+	}
+	return p;
+}
+void put_list(Linklist head)
+{
+	Linklist p=head->next;
+	while(p){
+		printf("the name=%s\n",p->name);
+		p=p->next;
+	}
+}
+void free_list(Linklist head)
+{
+	Linklist p;
+	while(head){
+		p=head;
+		head=head->next;
+		free(p);
+	}
+}
+
+void delete_list(Linklist head,int n)
+{
+	Linklist p=head;
+	Linklist q;
+	while(p->next){
+		q=p->next;
+		
+		if(q->num==n){
+			p->next=q->next;
+			free(q);
+		}
+		p=p->next;
+	}
+}
+void add_list(Linklist head,int n)
+{
+	Linklist p=head;
+	Linklist q;
+	while(p->next){
+		p=p->next;
+		if(p->num==n){
+			q=(Linklist)malloc(sizeof(Lnode));
+			q->next=p->next;
+			p->next=q;
+			q->num=10;
+			sprintf(q->name,"haobing");
+			printf("**\n");
+		}
+	}
+}
+			
+int main()
+{
+	Linklist head=(Linklist)malloc(sizeof(Lnode));
+	head->next=NULL;
+	head=creat_list(head,6);
+	put_list(head);
+	delete_list(head,3);
+	put_list(head);
+	add_list(head,0);
+	put_list(head);
+	free_list(head);
+}
+		
+	
+
+

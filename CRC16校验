@@ -1,0 +1,62 @@
+MODBUS-CRC16
+#include<stdio.h>
+#include<stdlib.h>
+
+int main()
+{
+char a[]={'a','b','c'};
+int b=0xa001;
+int h=0xff;
+int lo=0xff;
+int num;
+int k=0;
+int tmp;
+for(int i=0;i<3;i++){
+	lo=lo^a[i];
+	num=(h<<8)+lo;
+	for(int j=0;j<=7;j++){
+		tmp=num&0x1;
+		num=num>>1;
+	
+	
+	if(tmp)
+		num=num^b;
+	}
+	lo=num&0xff;
+	h=(num>>8)&0xff;
+}
+int m=(num>>8)+((num&0xff)<<8);
+printf("the num=%x\n",num);
+}
+	/*
+	unsigned int crc(unsigned char *ptr,unsigned int len)
+	{
+		unsigned int i,j,tmp,crc16;
+		crc16=0xffff;
+		for(i=0;i<len;i++)
+		{
+			crc16=*ptr^crc16;
+			for(j=0;j<8;j++){
+				tmp=crc16&0x0001;
+				crc16=crc16>>1;
+				if(tmp)
+					crc16=crc16^0xa001;
+				}
+				*ptr++;
+			}
+			return crc16;
+		}
+		int main()
+		{
+			unsigned char a[]={'2','2','3'};
+			unsigned int k=crc(a,3);
+			printf("the k=%x\n",k);
+		}
+		
+	*/	
+	
+	
+	
+	
+	
+	

@@ -20,7 +20,21 @@ member为结构中类型为list_head的域
  Very good！！！
     试想如果我们知道链表中的list_head的地址（以为list_head为链表的节点我们当然可以知道它的地址）
     就可以找到包含这个节点的数据结构的地址，找到这个数据结构的地址顺理成章的就可以访问这个结构中的每个元素了。
+例子：*********************************************************************************************************
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+struct st{
+int a;
+char b[10];
+};
+int main()
+{
+struct st s;
+printf("the st=%p,st.a=%p,st.b=%p,0-=%p\n",&s,&(s.a),s.b,((struct st *)0)->b);
+}
 
+输出：the st=0x7ffdbd63c180,st.a=0x7ffdbd63c180,st.b=0x7ffdbd63c184,0-=0x4
 
 
 

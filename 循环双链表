@@ -1,0 +1,490 @@
+http://blog.sina.com.cn/s/blog_4cd5d2bb0101525j.html
+1）参考定义
+struct list_node{
+    TYPE data;
+    struct list_head list; //定义一个list_head的节点
+};
+
+ #define list_entry(ptr, type, member) \
+   ( (type *)((char *)(ptr)-(unsigned long)(&(type *)0)->member) )
+    (unsigned long)(&(type *)0)->member) )定义为把0地址转化为type类型的指针，
+    然后获取该结构中member成员的指针，并将其强制转换为unsigned long类型。看上去不知所云，我们细细的来分析一下：
+在应用中：
+ptr是指向list_head类型链表的指针
+type为一个包含list_head结构的结构类型
+member为结构中类型为list_head的域
+
+如果data现在在0地址上，那么&（type *)0->member就是从0地址到list_head的偏移量（相对长度），
+说白了就是数据域data在 此结构中的占多长的空间。这样如果我们有一个绝对的地址ptr（list_head类型）那么： 
+                    绝对地址 - 相对地址 = 包含list_head结构的绝对地址
+ Very good！！！
+    试想如果我们知道链表中的list_head的地址（以为list_head为链表的节点我们当然可以知道它的地址）
+    就可以找到包含这个节点的数据结构的地址，找到这个数据结构的地址顺理成章的就可以访问这个结构中的每个元素了。
+
+
+
+
+/******************************************************************************
+ * Filename : uc_list.h
+ * Created  : 2009-8-8 by franco.yin
+ * Description -
+ *
+ ******************************************************************************/
+
+#ifndef _UC_LIST_H
+#define _UC_LIST_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "uc_public.h"
+
+typedef struct uclist_head {
+	struct uclist_head *next, *prev;
+}uclist_s, ucnode_s;
+
+#define UCLIST_INIT(name) { &(name), &(name) }
+#define uclist_init(ptr) do { \
+	(ptr)->next = (ptr); (ptr)->prev = (ptr); \
+} while (0)
+
+/* for windows
+#define uclist_entry(ptr, type, member) \
+    ((type *)((char *)(ptr) - (UC_U32)(&((type *)0)->member)))
+*/
+
+#define uclist_entry(pNode, type, node) ({			\
+        const typeof( ((type *)0)->node ) *__mptr = (pNode);	\
+        (type *)( (char *)__mptr - ((long) &((type *)0)->node) );})
+
+#define uclist_for_each(pNode, list_head) \
+	for ((pNode) = (list_head)->next; (pNode) != (list_head); \
+			(pNode) = (pNode)->next)
+
+#define uclist_for_each_prev(pNode, list_head) \
+	for ((pNode) = (list_head)->prev; (pNode) != (list_head); \
+        	(pNode) = (pNode)->prev)
+
+#define uclist_for_each_safe(pNode, pNodeTmp, list_head) \
+	for ((pNode) = (list_head)->next, (pNodeTmp) = (pNode)->next; (pNode) != (list_head); \
+		(pNode) = (pNodeTmp), (pNodeTmp) = (pNode)->next)
+
+#define uclist_for_each_prev_safe(pNode, pNodeTmp, list_head) \
+	for ((pNode) = (list_head)->prev, (pNodeTmp) = (pNode)->prev; (pNode) != (list_head); \
+        	(pNode) = (pNodeTmp), (pNodeTmp) = (pNode)->prev)
+
+#define uclist_for_each_safe_start(pStart, pNode, pNodeTmp, list_head) \
+		for ((pNode) = (pStart), (pNodeTmp) = (pNode)->next; (pNode) != (list_head); \
+			(pNode) = (pNodeTmp), (pNodeTmp) = (pNode)->next)
+
+#define uclist_for_each_prev_safe_start(pStart, pNode, pNodeTmp, list_head) \
+		for ((pNode) = (pStart), (pNodeTmp) = (pNode)->prev; (pNode) != (list_head); \
+				(pNode) = (pNodeTmp), (pNodeTmp) = (pNode)->prev)
+
+#define uclist_del(pNode) _uclist_del(pNode, __func__, __LINE__)
+
+static inline void
+__uclist_add(ucnode_s *new_node, ucnode_s *prev, ucnode_s *next)
+{
+	next->prev = new_node;
+	new_node->next = next;
+	new_node->prev = prev;
+	prev->next = new_node;
+}
+
+static inline void
+uclist_add_head(ucnode_s *pNode, uclist_s *list_head)
+{
+	__uclist_add(pNode, list_head, list_head->next);
+}
+
+static inline void
+uclist_add_tail(ucnode_s *pNode, uclist_s *list_head)
+{
+	__uclist_add(pNode, list_head->prev, list_head);
+}
+
+static inline void
+__uclist_del(ucnode_s *prev, ucnode_s *next, const char *func, int line)
+{
+	if(prev == NULL || next == NULL) {
+		uc_err("__uclist_del bad pointer prev[%p] next[%p] [%s:%d]\n", prev, next, func, line);
+		return;
+	}
+	next->prev = prev;
+	prev->next = next;
+}
+
+static inline void
+_uclist_del(ucnode_s *entry, const char *func, int line)
+{
+	__uclist_del(entry->prev, entry->next, func, line);
+	uclist_init(entry);
+}
+
+static inline void
+uclist_free(uclist_s *list_head, void (*free_func)(ucnode_s * entry))
+{
+	ucnode_s *node1, *node2;
+
+	uclist_for_each_safe(node1, node2, list_head) {
+		uclist_del(node1);
+		if(free_func == NULL) {
+			uc_free(node1);
+		} else {
+			free_func(node1);
+		}
+	}
+}
+
+static inline int
+uclist_is_head(ucnode_s *node, const uclist_s *list_head)
+{
+	return node == list_head->next;
+}
+
+static inline int
+uclist_is_tail(ucnode_s *node, const uclist_s *list_head)
+{
+	return node == list_head->prev;
+}
+
+static inline void
+uclist_move_up(ucnode_s *node)
+{
+	ucnode_s *node_tmp = NULL;
+
+	node_tmp = node->prev;
+	uclist_del(node);
+	uclist_add_tail(node, node_tmp);
+}
+
+static inline void
+uclist_move_down(ucnode_s *node)
+{
+	ucnode_s *node_tmp = NULL;
+
+	node_tmp = node->next;
+	uclist_del(node);
+	uclist_add_head(node, node_tmp);
+}
+
+static inline int
+uclist_empty(const uclist_s *list_head)
+{
+	return list_head->next == list_head;
+}
+
+static inline void
+uclist_merge_tail(uclist_s *pListDst, uclist_s *pListSrc)
+{
+	ucnode_s *prev = pListDst->prev;
+
+	if (uclist_empty(pListSrc)) {
+		return;
+	}
+
+	pListDst->prev = pListSrc->prev;
+	pListSrc->prev->next = pListDst;
+	prev->next = pListSrc->next;
+	pListSrc->next->prev = prev;
+
+	uclist_init(pListSrc);
+}
+
+static inline void
+uclist_merge_head(uclist_s *pListDst, uclist_s *pListSrc)
+{
+	ucnode_s *next = pListDst->next;
+
+	if (uclist_empty(pListSrc)) {
+		return;
+	}
+
+	pListDst->next = pListSrc->next;
+	pListSrc->next->prev = pListDst;
+	next->prev = pListSrc->prev;
+	pListSrc->prev->next = next;
+
+	uclist_init(pListSrc);
+}
+
+static inline void
+__uclist_splice(ucnode_s *list, uclist_s *list_head)
+{
+	ucnode_s *first = list->next;
+	ucnode_s *last = list->prev;
+	ucnode_s *at = list_head->next;
+
+	first->prev = list_head;
+	list_head->next = first;
+
+	last->next = at;
+	at->prev = last;
+}
+
+static inline void
+uclist_splice(ucnode_s *list, uclist_s *list_head)
+{
+	if (!uclist_empty(list))
+		__uclist_splice(list, list_head);
+}
+
+static inline void
+uclist_splice_init(ucnode_s *list, uclist_s *list_head)
+{
+	if (!uclist_empty(list)) {
+		__uclist_splice(list, list_head);
+		uclist_init(list);
+	}
+}
+
+//获取链表头之后的第一个链表
+static inline ucnode_s *
+uclist_get_first(uclist_s *list_head)
+{
+	if(uclist_empty(list_head)) {
+		return NULL;
+	}
+
+	return (list_head)->next;
+}
+
+static inline ucnode_s *
+uclist_get_last(uclist_s *list_head)
+{
+	if(uclist_empty(list_head)) {
+		return NULL;
+	}
+
+	return (list_head)->prev;
+}
+
+static inline ucnode_s *
+uclist_get_next(ucnode_s *pNode)
+{
+	return (pNode)->next;
+}
+
+static inline ucnode_s *
+uclist_get_prev(ucnode_s *pNode)
+{
+	return (pNode)->prev;
+}
+
+static inline int
+uclist_get_count(uclist_s *list_head)
+{
+	ucnode_s *pos, *posTmp;
+	int ret = 0;
+
+	uclist_for_each_safe(pos, posTmp, list_head) {
+		ret++;
+	}
+	return ret;
+}
+
+/***************************************************************
+ * Function: uclist_sort
+ * Created : 2016-9-19  by franco.yin
+ * Description - sort a list big to small, call back func return 1(a>b);0(a=b);-1(a<b)
+ * if_round:0-just sort;1-round in same level
+ */
+static inline void
+uclist_sort(uclist_s *pList, int if_round, int (*a_greater_equ_b)(ucnode_s *pNodeA, ucnode_s *pNodeB, void *p), void *p)
+{
+	uclist_s list_tmp;
+	ucnode_s *pNodeMid = NULL;
+	ucnode_s *pNodeAdd = NULL;
+	ucnode_s *pNode = NULL;
+	ucnode_s *pNodeTmp = NULL;
+	ucnode_s *pNode1 = NULL;
+	ucnode_s *pNodeTmp1 = NULL;
+	int ret = 0;
+	int cnt = 0;
+	int mid_val = 0;
+	int add_val = 0;
+
+	if(uclist_empty(pList) || a_greater_equ_b == NULL) {
+		uc_err("uclist_sort entry error\n");
+		return;
+	}
+
+	uclist_init(&list_tmp);
+
+	if(if_round > 0) {
+		uclist_for_each_safe(pNode, pNodeTmp, pList) {
+			uclist_del(pNode);
+
+			if(pNodeMid == NULL) {
+				uclist_add_tail(pNode, &list_tmp);
+				pNodeMid = pNode;
+			} else {
+				ret = a_greater_equ_b(pNode, pNodeMid, p);
+				if(ret > 0) {
+					add_val = 0;
+					pNodeAdd = NULL;
+					uclist_for_each_prev_safe_start(pNodeMid->prev, pNode1, pNodeTmp1, &list_tmp) {
+						ret = a_greater_equ_b(pNode, pNode1, p);
+						if (ret < 0) {
+							if(pNodeAdd == NULL) {
+								pNodeAdd = pNode1;
+								add_val = 1;
+							}
+							break;
+						} else if (ret == 0) {
+							if(pNodeAdd == NULL) {
+								pNodeAdd = pNode1->prev;
+								add_val = 1;
+							}
+						}
+					}
+					if(pNodeAdd == NULL) {
+						uclist_add_head(pNode, &list_tmp);
+					} else {
+						__uclist_add(pNode, pNodeAdd, pNodeAdd->next);
+					}
+					add_val = 1;
+
+					cnt++;
+					mid_val += add_val;
+				} else if(ret == 0) {
+					add_val = 0;
+					pNodeAdd = NULL;
+					uclist_for_each_safe_start(pNodeMid->next, pNode1, pNodeTmp1, &list_tmp) {
+						ret = a_greater_equ_b(pNode, pNode1, p);
+						if (ret == 0) {
+							pNodeAdd = pNode1->prev;
+							add_val = -1;
+						} else {
+							break;
+						}
+					}
+
+					if(add_val == 0) {
+						pNodeAdd = pNodeMid->prev;
+						add_val = 1;
+					}
+
+					__uclist_add(pNode, pNodeAdd, pNodeAdd->next);
+
+					cnt++;
+					mid_val += add_val;
+				} else {
+					add_val = 0;
+					pNodeAdd = NULL;
+					uclist_for_each_prev_safe(pNode1, pNodeTmp1, &list_tmp) {
+						ret = a_greater_equ_b(pNode, pNode1, p);
+						if (ret < 0) {
+							if(pNodeAdd == NULL) {
+								pNodeAdd = pNode1;
+								add_val = -1;
+							}
+							break;
+						} else if (ret == 0) {
+							if(pNodeAdd == NULL) {
+								pNodeAdd = pNode1->prev;
+								add_val = -1;
+							}
+						}
+					}
+					if(pNodeAdd == NULL) {
+						uclist_add_head(pNode, &list_tmp);
+					} else {
+						__uclist_add(pNode, pNodeAdd, pNodeAdd->next);
+					}
+					add_val = -1;
+
+					cnt++;
+					mid_val += add_val;
+				}
+			}
+
+			if(cnt >= 2) {
+				if(mid_val < 0) {
+					pNodeMid = pNodeMid->next;
+				} else if(mid_val == 0) {
+				} else {
+					pNodeMid = pNodeMid->prev;
+				}
+				cnt = 0;
+				mid_val = 0;
+			}
+		}
+	} else {
+		uclist_for_each_safe(pNode, pNodeTmp, pList) {
+			uclist_del(pNode);
+
+			if(pNodeMid == NULL) {
+				uclist_add_tail(pNode, &list_tmp);
+				pNodeMid = pNode;
+			} else {
+				ret = a_greater_equ_b(pNode, pNodeMid, p);
+				if(ret > 0) {
+					uclist_for_each_safe(pNode1, pNodeTmp1, &list_tmp) {
+						ret = a_greater_equ_b(pNode, pNode1, p);
+						if(ret > 0) {
+							__uclist_add(pNode, pNode1->prev, pNode1);
+							break;
+						}
+					}
+					cnt++;
+					mid_val++;
+				} else if(ret == 0) {
+					add_val = 0;
+					uclist_for_each_safe_start(pNodeMid->next, pNode1, pNodeTmp1, &list_tmp) {
+						ret = a_greater_equ_b(pNode, pNode1, p);
+						if(ret != 0) {
+							__uclist_add(pNode, pNode1->prev, pNode1);
+							add_val = -1;
+							break;
+						}
+					}
+					if(add_val == 0) {
+						uclist_add_tail(pNode, &list_tmp);
+						add_val = -1;
+					}
+					cnt++;
+					mid_val += add_val;
+				} else {
+					add_val = 0;
+					uclist_for_each_safe_start(pNodeMid->next, pNode1, pNodeTmp1, &list_tmp) {
+						ret = a_greater_equ_b(pNode, pNode1, p);
+						if(ret > 0) {
+							__uclist_add(pNode, pNode1->prev, pNode1);
+							add_val = -1;
+							break;
+						}
+					}
+					if(add_val == 0) {
+						uclist_add_tail(pNode, &list_tmp);
+						add_val = -1;
+					}
+					cnt++;
+					mid_val += add_val;
+				}
+			}
+
+			if(cnt >= 2) {
+				if(mid_val < 0) {
+					pNodeMid = pNodeMid->next;
+				} else if(mid_val == 0) {
+				} else {
+					pNodeMid = pNodeMid->prev;
+				}
+				cnt = 0;
+				mid_val = 0;
+			}
+		}
+
+	}
+
+	uclist_merge_tail(pList, &list_tmp);
+}
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif				/* _UC_LIST_H */

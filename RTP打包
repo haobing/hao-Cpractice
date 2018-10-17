@@ -1,0 +1,293 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include <stdbool.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+
+#pragma pack(1)
+FILE *fp = NULL;
+int sockfd;
+typedef struct _rtp_header
+{
+    unsigned char csrc_len:4;
+    unsigned char extension:1;
+    unsigned char padding:1;
+    unsigned char version:2;
+
+    unsigned char payload:7;
+    unsigned char marker:1;
+
+    unsigned short seq_no;
+
+    unsigned int timestamp;
+
+    unsigned int ssrc;
+}rtp_header;
+
+typedef struct _nalu_header
+{
+    unsigned char type:5;
+    unsigned char nri:2;
+    unsigned char f:1;
+}nalu_header;
+
+typedef struct _fu_indicator
+{
+    unsigned char type:5;
+    unsigned char nri:2;
+    unsigned char f:1;
+}fu_indicator;
+
+typedef struct _fu_header
+{
+    unsigned char type:5;
+    unsigned char r:1;
+    unsigned char e:1;
+    unsigned char s:1;
+}fu_header;
+
+typedef struct _nalu_unit
+{
+    unsigned int len;
+    unsigned char data[1024*1024];
+    nalu_header header;
+}nalu_unit;
+
+bool find_start3(unsigned char *data)
+{
+    
+    if((data[0]==0)&&(data[1]==0)&&(data[2]==1))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+bool find_start4(unsigned char *data)
+{
+    if((data[0]==0)&&(data[1]==0)&&(data[2]==0)&&(data[3]==1))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+void get_nalu(nalu_unit *nalu)
+{
+    int read_len = 0;
+    int startlen = 0;
+    int endlen = 0;
+    bool result;
+    unsigned char data[1024*1024];
+    unsigned char *pdata = data;
+    memset(data,0,sizeof(pdata));
+    memset(nalu->data,0,sizeof(nalu->data));
+
+    read_len = fread(pdata,1,3,fp);
+
+    while(!feof(fp))
+    {
+        result = find_start3(pdata);
+        if(result)
+        {
+            pdata += 3; 
+            startlen += 3;     
+            break;
+        }
+        else
+        {
+            read_len = fread(pdata+3,1,1,fp);
+            result = find_start4(pdata);
+            if(result)
+            {
+                pdata += 4;
+                startlen += 4;          
+                break;
+            }
+            else
+            {
+                pdata += 1;
+                startlen += 1;
+                
+            }
+        }
+    }
+
+    endlen += startlen;
+
+    fread(pdata,1,3,fp);
+    endlen += 3;
+
+    while(!feof(fp))
+    {
+
+       result = find_start3(pdata);
+       if(result)
+       {
+           fseek(fp,-3,SEEK_CUR);
+           endlen -= 3;
+           break;
+       }
+       else
+       {
+           read_len = fread(pdata+3,1,1,fp);
+           endlen += 1;
+           result = find_start4(pdata);
+           if(result)
+           {
+               fseek(fp,-4,SEEK_CUR);
+                endlen -= 4;
+                break;
+           }
+           else
+           {
+               pdata += 1;
+           }
+       }   
+    }
+
+    nalu->len = endlen -startlen - 1;
+    memcpy(&nalu->header,data+startlen,1);
+    if((endlen-startlen)>1)
+    {
+        memcpy(nalu->data,data+startlen+1,endlen-startlen-1);
+    }
+}
+
+static unsigned long seq = 1;
+static unsigned long timestamp = 3600;
+void pack_rtp_header(unsigned char *data,int type)
+{
+    rtp_header *header = (rtp_header *)data;
+    header->csrc_len = 0;
+    header->extension = 0;
+    header->padding = 0;
+    header->version = 2;
+
+    header->payload = type;
+    header->marker = 1;
+
+    header->seq_no = htons(seq);
+    seq += 1;
+
+    header->timestamp = htonl(timestamp);
+    timestamp += 136;
+
+    header->ssrc = 123;
+}
+
+void pack_fu_indicator(unsigned char *data,nalu_header header)
+{
+    fu_indicator *indicator = (fu_indicator*)data;
+    indicator->type = 28;
+    indicator->nri = header.nri;
+    indicator->f = header.f;
+}
+
+void pack_fu_header(unsigned char *data,nalu_header header,int s,int e,int r)
+{
+    fu_header *fuheader = (fu_header*)data;
+    fuheader->type = header.type;
+    fuheader->r =r;
+    fuheader->e = e;
+    fuheader->s = s;
+}
+
+void senddata(unsigned char *data,int len)
+{
+    struct sockaddr_in server;
+    struct sockaddr_in self;
+    
+
+    bzero(&server,sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_port = htons(1234);
+    server.sin_addr.s_addr = inet_addr("192.168.100.149");
+
+    sendto(sockfd,data,len,0,(struct sockaddr *)&server,sizeof(server));
+    int i=0;
+    for(i=0;i<len;i++)
+    {
+        printf(" %02x ",data[i]);
+    }
+    printf("********\n");
+    usleep(10000);
+
+}
+
+
+void pack_send_rtp(void)
+{   
+    nalu_unit nalu;
+    int alen = 0;
+    int num = 0;
+    int i = 0;
+    unsigned char data[2048];
+    fp = fopen("./cuc_ieschool.h264","rb");
+
+    while(!feof(fp))
+    {
+        get_nalu(&nalu);
+
+        if(nalu.len <1200)
+        {   
+            memset(data,0,sizeof(data));
+            pack_rtp_header(data,33);
+            memcpy(data+12,&nalu.header,1);
+            memcpy(data+13,nalu.data,nalu.len);
+
+            senddata(data,nalu.len +13);
+        }
+        else if(nalu.len > 1200)
+        {
+            num = (nalu.len/1200)+1;
+            
+            memset(data,0,sizeof(data));
+            pack_rtp_header(data,33);
+            pack_fu_indicator(data+12,nalu.header);
+            pack_fu_header(data+13,nalu.header,1,0,0);
+            memcpy(data+14,nalu.data,1200);
+            senddata(data,1200+14);
+
+            for(i=1;i<num-1;i++)
+            {
+                memset(data,0,sizeof(data));
+                pack_rtp_header(data,33);
+                pack_fu_indicator(data+12,nalu.header);
+                pack_fu_header(data+13,nalu.header,0,0,0);
+                memcpy(data+14,nalu.data+i*1200,1200);
+                senddata(data,1200+14);
+
+            }
+
+            memset(data,0,sizeof(data));
+            pack_rtp_header(data,33);
+            pack_fu_indicator(data+12,nalu.header);
+            pack_fu_header(data+13,nalu.header,0,1,0);
+            int leftlen = nalu.len-(i*1200);
+            memcpy(data+14,nalu.data+i*1200,leftlen);
+            senddata(data,leftlen+14);
+        }
+    }
+}
+
+
+
+
+
+int main()
+{
+    sockfd = socket(AF_INET,SOCK_DGRAM,0);
+    pack_send_rtp();
+}
+
+
+

@@ -1,3 +1,4 @@
+
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
@@ -172,7 +173,7 @@ void pack_rtp_header(unsigned char *data,int type)
     header->padding = 0;
     header->version = 2;
 
-    header->payload = type;
+    header->payload = 96;
     header->marker = 1;
 
     header->seq_no = htons(seq);
@@ -209,7 +210,7 @@ void senddata(unsigned char *data,int len)
 
     bzero(&server,sizeof(server));
     server.sin_family = AF_INET;
-    server.sin_port = htons(1234);
+    server.sin_port = htons(6666);
     server.sin_addr.s_addr = inet_addr("192.168.100.149");
 
     sendto(sockfd,data,len,0,(struct sockaddr *)&server,sizeof(server));
@@ -289,5 +290,18 @@ int main()
     pack_send_rtp();
 }
 
+
+//***********************************************************************************
+SDP:
+m=video 6666 RTP/AVP 96
+a=rtpmap:96 H264/90000
+a=framerate:25
+a=packetization-mode=1
+c=IN IP4 192.168.100.149
+//步骤
+1打开VLC添加SDP文件；
+2设置rtp://192.168.100.149:6666
+3打开播放
+4打开linux下的打包发送H264程序
 
 

@@ -180,7 +180,7 @@ void pack_rtp_header(unsigned char *data,int type)
     seq += 1;
 
     header->timestamp = htonl(timestamp);
-    timestamp += 136;
+    //timestamp += 360;
 
     header->ssrc = 123;
 }
@@ -220,7 +220,7 @@ void senddata(unsigned char *data,int len)
         printf(" %02x ",data[i]);
     }
     printf("********\n");
-    usleep(10000);
+    usleep(20000);
 
 }
 
@@ -242,6 +242,8 @@ void pack_send_rtp(void)
         {   
             memset(data,0,sizeof(data));
             pack_rtp_header(data,33);
+            timestamp += 3600;
+
             memcpy(data+12,&nalu.header,1);
             memcpy(data+13,nalu.data,nalu.len);
 
@@ -253,6 +255,8 @@ void pack_send_rtp(void)
             
             memset(data,0,sizeof(data));
             pack_rtp_header(data,33);
+            timestamp += 3600;
+
             pack_fu_indicator(data+12,nalu.header);
             pack_fu_header(data+13,nalu.header,1,0,0);
             memcpy(data+14,nalu.data,1200);
@@ -289,6 +293,7 @@ int main()
     sockfd = socket(AF_INET,SOCK_DGRAM,0);
     pack_send_rtp();
 }
+
 
 
 //***********************************************************************************
